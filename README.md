@@ -1,44 +1,67 @@
-# Finance & Cash Flow Dashboard
+# CashFlow AI
 
-A Python-based project for analysing financial data, tracking cash flow and generating practical business insights.
+A local desktop finance dashboard built with Python and CustomTkinter.
 
-## Project Overview
+This repository preserves the original GitHub project history while adding the current CashFlow AI desktop application and local data model.
 
-The goal of this project is to build a practical finance dashboard that transforms raw financial data into clear and useful information.
+## Project history
 
-The project will focus on:
+The original project on GitHub was a Python-based finance and cash-flow analysis project focused on:
 
-- Income and expense analysis
-- Cash flow tracking
-- Expense categorisation
-- Monthly financial summaries
-- Financial data visualisation
-- Identifying trends and patterns in financial data
+- income and expense analysis
+- cash flow tracking
+- monthly financial summaries
+- financial data visualisation
+- practical data analysis workflows
 
-## Technologies
+The original notebook and analysis script are retained in this branch so the existing GitHub history remains intact.
 
-- Python
-- Pandas
-- Matplotlib
-- CSV / financial datasets
-- Git & GitHub
+## Project structure
 
-## Project Status
+- `app/` — modular desktop application logic
+- `data/` — local JSON finance storage
+- `reports/` — report output folder
+- `cashflow_analysis.py` — original project analysis script
+- `finance_cashflow_analysis.ipynb` — original notebook from the GitHub repository
+- `tests/` — automated regression tests
 
-🚧 Work in progress
+## Features
 
-This project is being developed as part of my Python, Data Analysis and AI learning journey. Features and documentation will be added progressively as the project develops.
+- Editable finance sections for:
+  - Bank accounts
+  - Savings
+  - Credit cards
+  - Loans
+  - Investments
+  - Income
+  - Fixed expenses
+  - Direct debits
+  - Payments completed
+  - Payments pending
+  - Goals with target, current, remaining and progress bar
+- Dashboard summary with:
+  - Total assets
+  - Total available cash
+  - Total savings
+  - Total investments
+  - Total debt
+  - Total loans
+  - Goals target/progress/remaining
+  - Upcoming critical payments
+  - Safe to spend until next payday
+  - Financial status: Green, Amber or Red
+- All data is saved locally in JSON.
+- Uses GBP values and local-editable forms.
 
-## Planned Development
+## Run locally
 
-1. Prepare and load financial dataset
-2. Clean and structure the data
-3. Analyse income and expenses
-4. Calculate key financial metrics
-5. Create data visualisations
-6. Build the dashboard
-7. Explore automation and AI-based insights
+```bash
+python3 main.py
+```
 
-## Purpose
+The app will use the local project data files and can bootstrap a local Python environment when needed.
 
-This project demonstrates practical application of Python and data analysis to a real-world finance use case.
+## Data privacy
+
+The local financial data files are intentionally excluded from version control and remain private.
+
