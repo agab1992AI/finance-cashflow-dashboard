@@ -1,0 +1,5 @@
+APP_TITLE = "CashFlow AI"
+APP_SUBTITLE = "Personal Finance Dashboard"
+APP_THEME = "dark"
+APP_VERSION = "0.1.0"
+DATA_FILE = "data/finance_data.json"

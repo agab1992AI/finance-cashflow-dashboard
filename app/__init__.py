@@ -1,0 +1,1 @@
+"""CashFlow AI application package."""
