@@ -20,6 +20,86 @@ def money_or_unknown(value: Any):
     return value
 
 
+PRIORITY_ORDER = {
+    "CRITICAL": 0,
+    "HIGH": 1,
+    "VERIFY": 2,
+    "MONITOR": 3,
+}
+
+
+def _priority_value(priority: Any) -> int:
+    return PRIORITY_ORDER.get(str(priority or "").upper(), len(PRIORITY_ORDER))
+
+
+def _parse_due_date(value: Any):
+    if value in (None, "", "Unknown", "N/A"):
+        return None
+    if isinstance(value, datetime.date):
+        return value
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    text = str(value).strip()
+    if not text:
+        return None
+    return parse_date(text)
+
+
+def _status_is_paid(status: str) -> bool:
+    text = (status or "").upper()
+    if not text:
+        return False
+    if "FULLY PAID" in text:
+        return True
+    if "PAID" in text and "UNPAID" not in text and "NOT PAID" not in text:
+        return True
+    return False
+
+
+def _status_is_overdue(status: str) -> bool:
+    text = (status or "").upper()
+    return "OVERDUE" in text or "PAST DUE" in text
+
+
+def _critical_marker(obligation: Dict) -> bool:
+    if str(obligation.get("Priority") or "").upper() == "CRITICAL":
+        return True
+    critical = obligation.get("critical_payment")
+    if critical is None:
+        critical = obligation.get("critical_payment_flag")
+    if critical is not None:
+        return str(critical).strip().lower() in {"yes", "true", "y", "1"}
+    return False
+
+
+def sort_obligations(obligations: List[Dict]) -> List[Dict]:
+    """Return a canonical, deterministic payment order.
+
+    Rule order:
+      1. unpaid obligations first
+      2. overdue obligations first within unpaid items
+      3. priority level from CRITICAL > HIGH > VERIFY > MONITOR
+      4. due date ascending for same priority tier
+      5. account name for deterministic tie-breaker
+    """
+    def sort_key(item: Dict):
+        status = str(item.get("Status") or item.get("payment_status") or "")
+        priority = str(item.get("Priority") or ("CRITICAL" if _critical_marker(item) else "MONITOR"))
+        due_date = _parse_due_date(item.get("Due/Promise Date") or item.get("due_date") or item.get("payment_due_date"))
+        paid = _status_is_paid(status)
+        overdue = _status_is_overdue(status)
+
+        return (
+            1 if paid else 0,
+            1 if not overdue else 0,
+            _priority_value(priority),
+            due_date if due_date is not None else datetime.date.max,
+            str(item.get("Account") or item.get("name") or ""),
+        )
+
+    return sorted(obligations, key=sort_key)
+
+
 def build_obligations(data: Dict, as_of: datetime.date = None) -> List[Dict]:
     """
     Build a list of obligation/risk items from provided finance data.
@@ -196,7 +276,7 @@ def build_obligations(data: Dict, as_of: datetime.date = None) -> List[Dict]:
                 "Reason": "Scheduled expense not marked paid",
             })
 
-    return obligations
+    return sort_obligations(obligations)
 
 
 def summary_counts(obligations: List[Dict]) -> Dict[str, int]:
