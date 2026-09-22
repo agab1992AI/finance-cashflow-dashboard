@@ -1,6 +1,121 @@
 import json
+import re
 from datetime import date, datetime
 from pathlib import Path
+
+
+CANONICAL_TRANSACTION_TYPES = (
+    "income",
+    "expense",
+    "transfer",
+    "reimbursement",
+    "investment_income",
+    "cashback_reward",
+    "investment_contribution",
+)
+
+LEGACY_TRANSACTION_TYPE_MAP = {
+    "income": "income",
+    "earned_income": "income",
+    "salary": "income",
+    "wages": "income",
+    "wage": "income",
+    "pay": "income",
+    "self_employed_income": "income",
+    "expense": "expense",
+    "essential_living": "expense",
+    "fixed_expense": "expense",
+    "living_expense": "expense",
+    "debt_payment": "expense",
+    "card_payment": "expense",
+    "transfer": "transfer",
+    "internal_transfer": "transfer",
+    "account_transfer": "transfer",
+    "bank_transfer": "transfer",
+    "own_account_transfer": "transfer",
+    "reimbursement": "reimbursement",
+    "household_reimbursement": "reimbursement",
+    "refund": "reimbursement",
+    "dividend": "investment_income",
+    "dividends": "investment_income",
+    "investment_income": "investment_income",
+    "interest_income": "investment_income",
+    "cashback": "cashback_reward",
+    "cashback_reward": "cashback_reward",
+    "reward": "cashback_reward",
+    "rewards": "cashback_reward",
+    "investment_contribution": "investment_contribution",
+    "auto_invest": "investment_contribution",
+    "contribution": "investment_contribution",
+}
+
+
+def _normalize_transaction_key(value):
+    if value is None:
+        return ""
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    text = re.sub(r"[^a-z0-9_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text
+
+
+def normalize_transaction_type(value, default="expense"):
+    if value is None:
+        if default in CANONICAL_TRANSACTION_TYPES:
+            return default
+        return "expense"
+
+    text = _normalize_transaction_key(value)
+    if not text:
+        if default in CANONICAL_TRANSACTION_TYPES:
+            return default
+        return "expense"
+
+    if text in CANONICAL_TRANSACTION_TYPES:
+        return text
+
+    mapped = LEGACY_TRANSACTION_TYPE_MAP.get(text)
+    if mapped:
+        return mapped
+
+    if default in CANONICAL_TRANSACTION_TYPES:
+        return default
+    return "expense"
+
+
+def normalize_transaction_record(record, default_type=None):
+    if not isinstance(record, dict):
+        return record
+
+    normalized = dict(record)
+    if "classification" not in normalized and "transaction_type" in normalized:
+        normalized["classification"] = normalize_transaction_type(normalized.get("transaction_type"), default=default_type)
+    elif "classification" not in normalized and "type" in normalized:
+        normalized["classification"] = normalize_transaction_type(normalized.get("type"), default=default_type)
+
+    if "classification" in normalized:
+        normalized["classification"] = normalize_transaction_type(
+            normalized.get("classification"),
+            default=default_type,
+        )
+    elif default_type is not None:
+        normalized["classification"] = normalize_transaction_type(default_type)
+
+    return normalized
+
+
+def infer_default_transaction_type_for_collection(key):
+    if key in {"monthly_income", "income"}:
+        return "income"
+    if key in {"monthly_expenses", "fixed_expenses"}:
+        return "expense"
+    return "expense"
+
+
+def normalize_transaction_collection(records, default_type=None):
+    if not isinstance(records, list):
+        return records
+    return [normalize_transaction_record(item, default_type=default_type) for item in records]
 
 
 DEFAULT_DATA = {
@@ -159,6 +274,18 @@ class FinanceDataStore:
             merged["income"] = merged["monthly_income"]
         if "fixed_expenses" not in merged and "monthly_expenses" in merged:
             merged["fixed_expenses"] = merged["monthly_expenses"]
+
+        for key, default_type in {
+            "monthly_income": "income",
+            "income": "income",
+            "monthly_expenses": "expense",
+            "fixed_expenses": "expense",
+            "payments_completed": "expense",
+            "payments_pending": "expense",
+            "direct_debits": "expense",
+        }.items():
+            if isinstance(merged.get(key), list):
+                merged[key] = normalize_transaction_collection(merged[key], default_type=default_type)
 
         return merged
 

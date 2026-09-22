@@ -1,3 +1,6 @@
+from app.data_store import infer_default_transaction_type_for_collection, normalize_transaction_type
+
+
 class FinanceSummary:
     """Financial summary model for the CashFlow AI dashboard."""
 
@@ -7,6 +10,23 @@ class FinanceSummary:
     def _sum_items(self, key, value_key):
         total = 0.0
         for item in self.data.get(key, []):
+            try:
+                total += float(item.get(value_key, 0.0))
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _sum_classified_items(self, key, value_key, allowed_types, default_type=None):
+        total = 0.0
+        for item in self.data.get(key, []):
+            if not isinstance(item, dict):
+                continue
+            classification = normalize_transaction_type(
+                item.get("classification") or item.get("type") or item.get("transaction_type"),
+                default=default_type or infer_default_transaction_type_for_collection(key),
+            )
+            if classification not in allowed_types:
+                continue
             try:
                 total += float(item.get(value_key, 0.0))
             except (TypeError, ValueError):
@@ -108,10 +128,16 @@ class FinanceSummary:
         return self.total_assets() - self.total_debt()
 
     def total_income(self):
-        return self._sum_items("monthly_income", "amount") + self._sum_items("income", "amount")
+        return (
+            self._sum_classified_items("monthly_income", "amount", {"income"}, default_type="income")
+            + self._sum_classified_items("income", "amount", {"income"}, default_type="income")
+        )
 
     def total_fixed_expenses(self):
-        return self._sum_items("monthly_expenses", "amount") + self._sum_items("fixed_expenses", "amount")
+        return (
+            self._sum_classified_items("monthly_expenses", "amount", {"expense"}, default_type="expense")
+            + self._sum_classified_items("fixed_expenses", "amount", {"expense"}, default_type="expense")
+        )
 
     def total_goals_target(self):
         return self._sum_items("goals", "target_amount")
