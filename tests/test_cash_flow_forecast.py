@@ -273,6 +273,24 @@ class CashFlowForecastTests(unittest.TestCase):
         )
         self.assertEqual(result["running_balances"][-1]["balance"], Decimal("100.00"))
 
+    def test_minimum_paid_card_event_is_excluded_from_cash_outflows(self):
+        for status in ("Minimum paid", "minimum paid", "PAID", "Fully paid", "Completed"):
+            with self.subTest(status=status):
+                result = calculate_cash_flow_forecast(
+                    date(2026, 11, 1),
+                    date(2026, 11, 5),
+                    Decimal("300.00"),
+                    [{
+                        "id": f"card-{status.lower().replace(' ', '-')}",
+                        "date": "2026-11-03",
+                        "amount": Decimal("-50.00"),
+                        "type": "card_minimum",
+                        "status": status,
+                    }],
+                )
+                self.assertIsNone(result["earliest_shortfall"])
+                self.assertEqual(result["running_balances"][-1]["balance"], Decimal("300.00"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -78,7 +78,14 @@ def _money(value: object, field_name: str) -> Decimal:
 def _paid_status(status: object) -> bool:
     """Return True only for terminal states that imply no remaining cash outflow."""
     text = str(status or "").strip().lower()
-    return text in {"paid", "completed", "cleared", "fully paid", "received"}
+    return text in {
+        "paid",
+        "completed",
+        "cleared",
+        "fully paid",
+        "minimum paid",
+        "received",
+    }
 
 
 _VALID_UNPAID_OUTFLOW_STATUSES = {
