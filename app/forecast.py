@@ -63,12 +63,33 @@ def _money(value: object, field_name: str) -> Decimal:
         raise ForecastValidationError(f"Invalid amount for {field_name}: {value!r}.")
     if not amount.is_finite():
         raise ForecastValidationError(f"Invalid amount for {field_name}: {value!r}.")
-    return amount
+
+    try:
+        cents = amount.quantize(Decimal("0.01"))
+    except InvalidOperation:
+        raise ForecastValidationError(f"Invalid amount for {field_name}: {value!r}.")
+    if amount != cents:
+        raise ForecastValidationError(
+            f"Amount for {field_name} has fractional pennies: {value!r}."
+        )
+    return cents
 
 
 def _paid_status(status: object) -> bool:
+    """Return True only for terminal states that imply no remaining cash outflow."""
     text = str(status or "").strip().lower()
     return text in {"paid", "completed", "cleared", "fully paid", "received"}
+
+
+_VALID_UNPAID_OUTFLOW_STATUSES = {
+    "unpaid",
+    "not paid",
+    "pending",
+    "scheduled",
+    "explicitly scheduled",
+    "returned",
+    "overdue",
+}
 
 
 def _event_as_dict(event: Union[ForecastEvent, Mapping]) -> dict:
@@ -97,8 +118,10 @@ def calculate_cash_flow_forecast(
     """Calculate a deterministic chronological cash forecast.
 
     The caller supplies spendable cash as at ``forecast_start`` and only future unpaid
-    or scheduled events. The function does not infer income, subtract historical bills,
-    include overdraft headroom, or treat savings as spendable cash.
+    or scheduled events. Starting spendable cash may be negative and represents an
+    initial cash shortfall; overdraft availability is never inferred. Monetary inputs
+    must be finite and have no fractional pennies. Returned monetary results remain
+    Decimal values, not floats.
 
     Returns running balances by date and the earliest cash shortfall. Savings transfers
     are represented once, dated explicitly, and excluded from income.
@@ -109,8 +132,6 @@ def calculate_cash_flow_forecast(
         raise ForecastValidationError("Forecast end date cannot be before forecast start date.")
 
     starting_cash = _money(starting_spendable_cash, "starting spendable cash")
-    if starting_cash < 0:
-        raise ForecastValidationError("Starting spendable cash balance cannot be negative.")
 
     contribution = _money(savings_contribution, "savings contribution")
     savings = _money(available_savings_balance, "available savings balance")
@@ -137,14 +158,22 @@ def calculate_cash_flow_forecast(
         event_status = str(event.get("status") or "").strip().lower()
         event_type = str(event.get("type") or "").strip().lower()
 
+        if _paid_status(event_status):
+            continue
+
         if event_type in {"transfer", "internal_transfer", "savings_transfer"}:
             raise ForecastValidationError(
                 f"Internal transfer event {identifier} must not be supplied separately; "
                 "use the savings scenario parameters."
             )
 
-        if _paid_status(event_status):
-            continue
+        if event_type in {"expense", "outflow", "bill", "loan_repayment", "card_minimum", "debt_repayment"}:
+            if not event_status:
+                raise ForecastValidationError(f"Outflow event {identifier} requires an explicit status.")
+            if event_status not in _VALID_UNPAID_OUTFLOW_STATUSES:
+                raise ForecastValidationError(
+                    f"Outflow event {identifier} has invalid status: {event_status!r}."
+                )
 
         event_date = _parse_date(event.get("date"), f"event {identifier}")
         amount = _money(event.get("amount"), f"event {identifier}")
@@ -168,8 +197,6 @@ def calculate_cash_flow_forecast(
                 raise ForecastValidationError(f"Inflow event {identifier} must have a positive amount.")
             sort_rank = 0
         elif event_type in {"expense", "outflow", "bill", "loan_repayment", "card_minimum", "debt_repayment"}:
-            if event_status in {"unknown", "missing", "unconfirmed"}:
-                raise ForecastValidationError(f"Outflow event {identifier} is not explicitly unpaid/scheduled.")
             if amount > 0:
                 raise ForecastValidationError(f"Outflow event {identifier} must have a negative amount.")
             sort_rank = 2
@@ -194,7 +221,7 @@ def calculate_cash_flow_forecast(
 
     balances = []
     running_cash = starting_cash
-    earliest_shortfall = None
+    earliest_shortfall = start if running_cash < 0 else None
 
     events_by_date = {}
     for event_date, _, identifier, event_type, amount in normalized_events:
@@ -207,7 +234,7 @@ def calculate_cash_flow_forecast(
             running_cash += amount
 
         running_cash = running_cash.quantize(Decimal("0.01"))
-        balances.append({"date": current, "balance": float(running_cash)})
+        balances.append({"date": current, "balance": running_cash})
 
         if earliest_shortfall is None and running_cash < 0:
             earliest_shortfall = current
@@ -217,8 +244,8 @@ def calculate_cash_flow_forecast(
     result = {
         "running_balances": balances,
         "earliest_shortfall": earliest_shortfall,
-        "remaining_savings": float(remaining_savings.quantize(Decimal("0.01"))),
-        "savings_transferred": float(contribution.quantize(Decimal("0.01"))),
+        "remaining_savings": remaining_savings,
+        "savings_transferred": contribution,
         "events": normalized_events,
     }
     return result
